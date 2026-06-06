@@ -1,0 +1,102 @@
+/*
+ * Copyright (c) 2025 Konstantinos Karavitis
+ *
+ * Licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
+ * You may not use this file for commercial purposes.
+ * See the LICENSE file in the project root or visit:
+ * https://creativecommons.org/licenses/by-nc/4.0/
+ */
+
+package com.wordpress.kkaravitis.pricing.domain;
+
+import java.io.Serial;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+
+/**
+ * Represents a monetary value with precision.
+ * Encapsulates amount and currency, providing arithmetic operations.
+ */
+@Getter
+@Setter
+@EqualsAndHashCode
+@ToString
+public class Money implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+    private static final String CURRENCY_MISMATCH = "Currency mismatch";
+
+    private final BigDecimal amount;
+    private final String currency;
+
+    public Money() {
+        this.amount = null;
+        this.currency = null;
+    }
+
+    public Money(BigDecimal amount, String currency) {
+        this.amount = amount.setScale(2, RoundingMode.HALF_UP);
+        this.currency = currency;
+    }
+
+    public Money(double value, String currency) {
+        this(BigDecimal.valueOf(value), currency);
+    }
+
+    public Money add(Money other) {
+        ensureSameCurrency(other);
+        return new Money(this.amount.add(other.amount), currency);
+    }
+
+    public Money subtract(Money other) {
+        ensureSameCurrency(other);
+        return new Money(this.amount.subtract(other.amount), currency);
+    }
+
+    public Money divide(Money other) {
+        ensureSameCurrency(other);
+
+        return new Money(this.amount.divide(other.amount), currency);
+    }
+
+    public Money abs() {
+        return new Money(this.amount.abs(), currency);
+    }
+
+    public Money multiply(double factor) {
+        BigDecimal result = this.amount.multiply(BigDecimal.valueOf(factor));
+        return new Money(result, currency);
+    }
+
+    private void ensureSameCurrency(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw new IllegalArgumentException(CURRENCY_MISMATCH);
+        }
+    }
+
+    /**
+     * Check if this amount is less than another.
+     */
+    public boolean isLessThan(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw new IllegalArgumentException(CURRENCY_MISMATCH);
+        }
+        return this.amount.compareTo(other.amount) < 0;
+    }
+
+    /**
+     * Check if this amount is greater than another.
+     */
+    public boolean isGreaterThan(Money other) {
+        if (!this.currency.equals(other.currency)) {
+            throw new IllegalArgumentException(CURRENCY_MISMATCH);
+        }
+        return this.amount.compareTo(other.amount) > 0;
+    }
+}

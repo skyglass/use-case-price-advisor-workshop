@@ -1,0 +1,20 @@
+# Python bytecode & environments
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.env
+
+# Parquet and model artifacts
+/data/processed/*.parquet
+/data/processed/*.npy
+data/pricing_saved_model
+
+# Saved model and zip artifacts
+
+*.zip
+
+.idea
+
+*.iml

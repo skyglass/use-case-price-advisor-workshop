@@ -1,0 +1,18 @@
+services:
+  pricing-model-api:
+    image: pricing-model:latest
+    container_name: pricing-model-api
+    environment:
+      - KAFKA_BROKER=kafka:19092
+      - KAFKA_TOPIC=ml-model
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "7070:8000"
+    restart: unless-stopped
+    networks:
+      - pricing-net
+
+networks:
+  pricing-net:
+    external: true

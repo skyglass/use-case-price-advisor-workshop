@@ -1,0 +1,28 @@
+# === Core Web API ===
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+pydantic==2.9.*
+
+# === Data manipulation ===
+pandas==2.2.*
+numpy==1.26.*
+scikit-learn==1.5.*
+pyarrow==17.*
+joblib==1.4.*
+
+# === Excel / File handling ===
+openpyxl==3.1.*
+xlrd==1.2.*
+
+# === Machine Learning ===
+tensorflow==2.15.*
+keras==2.15.*
+tqdm==4.66.*
+
+# === Kafka communication ===
+confluent-kafka==2.*
+
+# === Utility / Logging ===
+requests==2.32.*
+
+python-multipart==0.0.*
