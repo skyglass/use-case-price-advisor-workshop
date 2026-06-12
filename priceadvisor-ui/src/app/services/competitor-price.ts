@@ -20,7 +20,7 @@ export class CompetitorPriceService {
 
   constructor(private http: HttpClient, cfg: AppConfigService) { 
     const c = cfg.config;
-    this.base = `${c.apiBaseUrl}${c.competitorApiPath}/competitor-prices`;
+    this.base = `${c.apiBaseUrl}${c.competitorApiPath}`;
   }
 
   list(): Observable<CompetitorPriceDto[]> {

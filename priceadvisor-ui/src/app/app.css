@@ -1,7 +1,19 @@
 .app-header {
-  background: linear-gradient(90deg, #0a5096, #cbdbeb);
-  padding: 1rem 2rem;
+  background: linear-gradient(90deg, #0a5096, #3f6b56);
+  padding: 1rem 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .app-header h1 {
@@ -10,5 +22,27 @@
   font-size: 1.75rem;
   font-weight: 600;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+}
+
+nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+nav a {
+  color: #ffffff;
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+nav a.active,
+nav a:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+main {
+  min-height: calc(100vh - 5rem);
 }

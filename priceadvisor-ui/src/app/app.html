@@ -1,6 +1,13 @@
 <header class="app-header">
-    <h1>Pricing Advisor Demo</h1>
+  <div class="brand">
+    <h1>Price Advisor Workshop</h1>
+    <nav>
+      <a routerLink="/pricing" routerLinkActive="active">Pricing Advisor</a>
+      <a routerLink="/banking" routerLinkActive="active">Banking</a>
+    </nav>
+  </div>
+  <app-auth-panel></app-auth-panel>
 </header>
-<body [class]="isDarkMode ? 'dark-theme' : 'light-theme'">  
+<main [class]="isDarkMode ? 'dark-theme' : 'light-theme'">
   <router-outlet></router-outlet>
-</body>
+</main>

@@ -1,0 +1,74 @@
+app:
+  kafka:
+    topics:
+      accounts-service-commands-topic: accounts-service-commands
+server:
+  port: 8081
+
+spring:
+  application:
+    name: bank-account-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/accounts
+    username: accounts
+    password: accounts
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  sql:
+    init:
+      mode: never
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    org.flywaydb: INFO
+    com.wordpress.kkaravitis: DEBUG
+
+inbox:
+  cleanup:
+    retention: "P1D"
+    lock-at-most-for: "PT5M"
+    lock-at-least-for: "PT10S"
+
+outbox:
+  cleanup:
+    retention: "P1D"
+    lock-at-most-for: "PT5M"
+    lock-at-least-for: "PT10S"
+
+cron:
+  delete:
+    old:
+      inbox: "0 0 0/1 * * *"
+      outbox: "0 0 0/1 * * *"

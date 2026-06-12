@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
+import { AppConfigService } from '../../config/app-config.service';
 
 export enum EventType {
   Click = 'ClickEvent',
@@ -29,6 +30,7 @@ export enum EventType {
 })
 export class EventSender {
   eventForm: FormGroup;
+  private readonly eventsBase: string;
 
   EventType = EventType;
 
@@ -57,7 +59,10 @@ export class EventSender {
   submissionMessage = '';
   isSuccess = false;
 
-  constructor(private fb: FormBuilder, private http: HttpClient) {
+  constructor(private fb: FormBuilder, private http: HttpClient, cfg: AppConfigService) {
+    const c = cfg.config;
+    this.eventsBase = `${c.apiBaseUrl}${c.pricingEventsPath}`;
+
     this.eventForm = this.fb.group({
       type: ['', Validators.required],
       productId: ['', Validators.required],
@@ -113,19 +118,19 @@ export class EventSender {
 
 
 
-    const apiUrl = "http://localhost:8080/pricing-api/events" + this.apiEndpointMap.get(type);
+    const apiUrl = this.eventsBase + this.apiEndpointMap.get(type);
     if (!apiUrl) {
       throw new Error(`No API URL mapped for event type: ${type}`);
     }
 
     this.http.post(apiUrl, payload).subscribe({
       next: () => {
-        this.submissionMessage = '✅ Event sent successfully!';
+        this.submissionMessage = 'Event sent successfully.';
         this.isSuccess = true;
         this.eventForm.reset(); // optional: reset form
       },
       error: err => {
-        this.submissionMessage = `❌ Error: ${err.message}`;
+        this.submissionMessage = `Error: ${err.message}`;
         this.isSuccess = false;
       }
     });

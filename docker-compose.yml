@@ -1,0 +1,566 @@
+name: priceadvisor
+
+services:
+  postgres-pricing:
+    image: postgres:15
+    container_name: priceadvisor-postgres-pricing
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: pricing_db
+      POSTGRES_USER: pricing_user
+      POSTGRES_PASSWORD: pricing_pass
+    volumes:
+      - postgres-pricing-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pricing_user -d pricing_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pricing-net
+
+  postgres-transfer:
+    image: postgres:15
+    container_name: priceadvisor-postgres-transfer
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: transfers
+      POSTGRES_USER: transfers
+      POSTGRES_PASSWORD: transfers
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    volumes:
+      - postgres-transfer-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transfers -d transfers"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pricing-net
+
+  postgres-account:
+    image: postgres:15
+    container_name: priceadvisor-postgres-account
+    restart: unless-stopped
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: accounts
+      POSTGRES_USER: accounts
+      POSTGRES_PASSWORD: accounts
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    volumes:
+      - postgres-account-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accounts -d accounts"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pricing-net
+
+  postgres-antifraud:
+    image: postgres:15
+    container_name: priceadvisor-postgres-antifraud
+    restart: unless-stopped
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: antifraud
+      POSTGRES_USER: antifraud
+      POSTGRES_PASSWORD: antifraud
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    volumes:
+      - postgres-antifraud-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U antifraud -d antifraud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pricing-net
+
+  postgres-keycloak:
+    image: postgres:15
+    container_name: priceadvisor-postgres-keycloak
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - postgres-keycloak-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pricing-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.2
+    container_name: priceadvisor-keycloak
+    restart: unless-stopped
+    command:
+      - start-dev
+      - --db=postgres
+      - --db-url=jdbc:postgresql://postgres-keycloak:5432/keycloak
+      - --db-username=keycloak
+      - --db-password=keycloak
+      - --features=token-exchange
+      - --import-realm
+    ports:
+      - "8180:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+    volumes:
+      - ./config/keycloak:/opt/keycloak/data/import:ro
+    networks:
+      - pricing-net
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: priceadvisor-pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@priceadvisor.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      postgres-pricing:
+        condition: service_healthy
+      postgres-transfer:
+        condition: service_healthy
+      postgres-account:
+        condition: service_healthy
+      postgres-antifraud:
+        condition: service_healthy
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - pricing-net
+
+  zookeeper:
+    image: zookeeper:3.8.0
+    container_name: priceadvisor-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      JVMFLAGS: "-Xms1024m -Xmx2048m"
+      ZOO_ENABLE_AUTH: "false"
+    volumes:
+      - zookeeper-data:/data
+      - zookeeper-datalog:/datalog
+    networks:
+      - pricing-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.1.2
+    container_name: priceadvisor-kafka
+    hostname: kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka:19092,LISTENER_DOCKER_EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 1
+      KAFKA_LOG4J_LOGGERS: kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_MAX_TIMEOUT_MS: 1800000
+    depends_on:
+      zookeeper:
+        condition: service_started
+    command:
+      - bash
+      - -lc
+      - >
+        set -euo pipefail;
+        /etc/confluent/docker/run & pid=$$!;
+        echo "Waiting for Kafka...";
+        for i in $$(seq 1 60); do
+          if kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+            echo "Kafka is up."; break; fi;
+          echo "  not yet ($$i/60)"; sleep 2;
+        done;
+        kafka-topics --bootstrap-server kafka:19092 --create --if-not-exists --topic connect-configs --partitions 1 --replication-factor 1 --config cleanup.policy=compact || true;
+        kafka-topics --bootstrap-server kafka:19092 --create --if-not-exists --topic connect-offsets --partitions 25 --replication-factor 1 --config cleanup.policy=compact || true;
+        kafka-topics --bootstrap-server kafka:19092 --create --if-not-exists --topic connect-status --partitions 5 --replication-factor 1 --config cleanup.policy=compact || true;
+        for t in click-event order-event rule-event inventory-event pricing-results ml-model pricing-alerts transfer-incident-alerts transfer-execution-saga-replies transfer-execution-saga-replies-dlt transfer-cancellation-saga-replies transfer-cancellation-saga-replies-dlt accounts-service-commands accounts-service-commands-dlt anti-fraud-service-commands anti-fraud-service-commands-dlt; do
+          kafka-topics --bootstrap-server localhost:9092 --create --if-not-exists --topic "$$t" --partitions 1 --replication-factor 1 || true;
+        done;
+        echo "Kafka topics ensured.";
+        wait "$$pid";
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - pricing-net
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop:3.27.0
+    container_name: priceadvisor-kafdrop
+    restart: unless-stopped
+    ports:
+      - "9001:9000"
+    environment:
+      KAFKA_BROKERCONNECT: kafka:19092
+      JVM_OPTS: -Xms32M -Xmx64M
+      SERVER_SERVLET_CONTEXTPATH: /
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - pricing-net
+
+  kafka-connect:
+    image: quay.io/debezium/connect:2.7
+    container_name: priceadvisor-kafka-connect
+    hostname: kafka-connect
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:19092
+      GROUP_ID: connect-cluster-1
+      CONFIG_STORAGE_TOPIC: connect-configs
+      OFFSET_STORAGE_TOPIC: connect-offsets
+      STATUS_STORAGE_TOPIC: connect-status
+      KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      REST_ADVERTISED_HOST_NAME: kafka-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-transfer:
+        condition: service_healthy
+      postgres-account:
+        condition: service_healthy
+      postgres-antifraud:
+        condition: service_healthy
+    networks:
+      - pricing-net
+
+  kafka-connect-setup:
+    image: curlimages/curl:8.10.1
+    container_name: priceadvisor-kafka-connect-setup
+    restart: "no"
+    depends_on:
+      kafka-connect:
+        condition: service_started
+    environment:
+      CONNECT_URL: http://kafka-connect:8083
+    volumes:
+      - ./config/connect:/connect:ro
+    entrypoint:
+      - /bin/sh
+      - /connect/register-connectors.sh
+    networks:
+      - pricing-net
+
+  pricing-api:
+    build:
+      context: .
+      dockerfile: pricing-api/Dockerfile
+    image: pricing-api:latest
+    container_name: pricing-api
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-pricing:5432/pricing_db
+      SPRING_DATASOURCE_USERNAME: pricing_user
+      SPRING_DATASOURCE_PASSWORD: pricing_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      postgres-pricing:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - pricing-net
+
+  pricing-model-api:
+    build:
+      context: ./pricing-model
+      dockerfile: Dockerfile
+    image: pricing-model:latest
+    container_name: pricing-model-api
+    restart: unless-stopped
+    ports:
+      - "7070:8000"
+    environment:
+      KAFKA_BROKER: kafka:19092
+      KAFKA_TOPIC: ml-model
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./pricing-model/data:/app/data
+    networks:
+      - pricing-net
+
+  bank-transfer-service:
+    build:
+      context: .
+      dockerfile: bank-transfer-service/Dockerfile
+    image: bank-transfer-service:latest
+    container_name: bank-transfer-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-transfer:5432/transfers
+      SPRING_DATASOURCE_USERNAME: transfers
+      SPRING_DATASOURCE_PASSWORD: transfers
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/banking
+      EXPECTED_AUDIENCE: transfer-service
+    depends_on:
+      postgres-transfer:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    networks:
+      - pricing-net
+
+  bank-account-service:
+    build:
+      context: .
+      dockerfile: bank-account-service/Dockerfile
+    image: bank-account-service:latest
+    container_name: bank-account-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-account:5432/accounts
+      SPRING_DATASOURCE_USERNAME: accounts
+      SPRING_DATASOURCE_PASSWORD: accounts
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      postgres-account:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - pricing-net
+
+  anti-fraud-service:
+    build:
+      context: .
+      dockerfile: anti-fraud-service/Dockerfile
+    image: anti-fraud-service:latest
+    container_name: anti-fraud-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-antifraud:5432/antifraud
+      SPRING_DATASOURCE_USERNAME: antifraud
+      SPRING_DATASOURCE_PASSWORD: antifraud
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    depends_on:
+      postgres-antifraud:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - pricing-net
+
+  banking-gateway:
+    build:
+      context: .
+      dockerfile: banking-gateway/Dockerfile
+    image: banking-gateway:latest
+    container_name: banking-gateway
+    restart: unless-stopped
+    ports:
+      - "8079:8079"
+    environment:
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/banking
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/banking/protocol/openid-connect/token
+      KEYCLOAK_EXCHANGE_CLIENT_ID: banking-gateway
+      KEYCLOAK_EXCHANGE_CLIENT_SECRET: gateway-secret
+      EXPECTED_USER_AUDIENCE: price-advisor-ui
+      TRANSFER_SERVICE_URL: http://bank-transfer-service:8080
+      ACCOUNT_SERVICE_URL: http://bank-account-service:8081
+      PRICING_API_URL: http://pricing-api:8080
+      PRICING_WS_URL: ws://pricing-api:8080
+    depends_on:
+      keycloak:
+        condition: service_started
+      pricing-api:
+        condition: service_started
+      bank-transfer-service:
+        condition: service_started
+      bank-account-service:
+        condition: service_started
+    networks:
+      - pricing-net
+
+  jobmanager:
+    build:
+      context: .
+      dockerfile: pricing-job/Dockerfile
+    image: pricing-job:latest
+    container_name: pricing-jobmanager
+    hostname: jobmanager
+    restart: unless-stopped
+    command:
+      - standalone-job
+      - --job-classname
+      - com.wordpress.kkaravitis.pricing.FlinkDynamicPricingJob
+      - --
+      - --configLocation
+      - /opt/pricing/config
+    ports:
+      - "8088:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        jobmanager.rpc.port: 6002
+        taskmanager.numberOfTaskSlots: 1
+        parallelism.default: 1
+        classloader.resolve-order: parent-first
+        state.backend: rocksdb
+        state.backend.incremental: true
+        state.backend.type: rocksdb
+        state.backend.rocksdb.localdir: /tmp/flink-working/rocksdb
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: file:///tmp/flink-state/checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-state/savepoints
+        execution.checkpointing.interval: 45000
+        execution.checkpointing.mode: EXACTLY_ONCE
+        execution.checkpointing.min-pause: 15000
+        execution.checkpointing.timeout: 35000
+        execution.checkpointing.max-concurrent-checkpoints: 1
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 5
+        restart-strategy.fixed-delay.delay: 10 s
+        process.jobmanager.working-dir: /tmp/flink-working
+        high-availability.type: ZOOKEEPER
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.cluster-id: /pricing
+        high-availability.storageDir: file:///tmp/flink-ha
+    depends_on:
+      kafka:
+        condition: service_healthy
+      pricing-api:
+        condition: service_started
+      zookeeper:
+        condition: service_started
+    volumes:
+      - ./pricing-job/config/config.yaml:/opt/pricing/config/config.yaml:ro
+    networks:
+      - pricing-net
+
+  taskmanager:
+    image: pricing-job:latest
+    container_name: pricing-taskmanager
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        jobmanager.rpc.port: 6002
+        taskmanager.numberOfTaskSlots: 1
+        parallelism.default: 1
+        classloader.resolve-order: parent-first
+        state.backend: rocksdb
+        state.backend.incremental: true
+        state.backend.type: rocksdb
+        state.backend.rocksdb.localdir: /tmp/flink-working/rocksdb
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: file:///tmp/flink-state/checkpoints
+        execution.checkpointing.savepoint-dir: file:///tmp/flink-state/savepoints
+        execution.checkpointing.mode: EXACTLY_ONCE
+        execution.checkpointing.interval: 45000
+        execution.checkpointing.min-pause: 15000
+        execution.checkpointing.timeout: 35000
+        execution.checkpointing.max-concurrent-checkpoints: 1
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 5
+        restart-strategy.fixed-delay.delay: 10 s
+        process.taskmanager.working-dir: /tmp/flink-working
+        high-availability.type: ZOOKEEPER
+        high-availability.zookeeper.quorum: zookeeper:2181
+        high-availability.cluster-id: /pricing
+        high-availability.storageDir: file:///tmp/flink-ha
+    depends_on:
+      jobmanager:
+        condition: service_started
+    volumes:
+      - ./pricing-job/config/config.yaml:/opt/pricing/config/config.yaml:ro
+    networks:
+      - pricing-net
+
+  ui:
+    build:
+      context: ./priceadvisor-ui
+      dockerfile: Dockerfile
+    image: priceadvisor-ui:latest
+    container_name: priceadvisor-ui
+    restart: unless-stopped
+    ports:
+      - "7000:80"
+    depends_on:
+      banking-gateway:
+        condition: service_started
+    volumes:
+      - ./priceadvisor-ui/ops/app-config.prod.json:/usr/share/nginx/html/app-config.json:ro
+    networks:
+      - pricing-net
+
+volumes:
+  postgres-pricing-data:
+  postgres-transfer-data:
+  postgres-account-data:
+  postgres-antifraud-data:
+  postgres-keycloak-data:
+  pgadmin-data:
+  zookeeper-data:
+  zookeeper-datalog:
+  kafka-data:
+
+networks:
+  pricing-net:
+    driver: bridge

@@ -1,0 +1,233 @@
+package com.wordpress.kkaravitis.banking.transfer.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+
+@Getter
+@Entity
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@EqualsAndHashCode(of = {"id"})
+@ToString
+@Table(name = "transfer")
+public class Transfer {
+    private static final String ILLEGAL_STATE_ERROR_TEMPLATE = "Transfer %s is in illegal state %s";
+
+    private static final String TRANSITION_ERROR_TEMPLATE = "Transfer %s was not allowed to transit from state %s to state %s";
+
+    @Id
+    @Column(name = "id", nullable = false, updatable = false)
+    private UUID id;
+
+    @Column(name = "customer_id", nullable = false)
+    private String customerId;
+
+    @Column(name = "from_account_id", nullable = false)
+    private String fromAccountId;
+
+    @Column(name = "to_account_id", nullable = false)
+    private String toAccountId;
+
+    @Column(name = "amount", nullable = false)
+    private BigDecimal amount;
+
+    @Column(name = "currency", nullable = false)
+    private String currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "state", nullable = false)
+    private TransferState state;
+
+    @Column(name = "funds_reservation_id")
+    private String fundsReservationId;
+
+    @Version
+    @Column(name = "version")
+    private long version;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    private Transfer(UUID id,
+          String customerId,
+          String fromAccountId,
+          String toAccountId,
+          BigDecimal amount,
+          String currency) {
+        this.id = id;
+        this.customerId = customerId;
+        this.fromAccountId = fromAccountId;
+        this.toAccountId = toAccountId;
+        this.amount = amount;
+        this.currency = currency;
+        this.state = TransferState.REQUESTED;
+        this.createdAt = Instant.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    public static Transfer createNew(UUID id,
+          String customerId,
+          String fromAccountId,
+          String toAccountId,
+          BigDecimal amount,
+          String currency) {
+        return new Transfer(id, customerId, fromAccountId, toAccountId, amount, currency);
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
+    @PrePersist
+    public void prePersist() {
+        this.createdAt = Instant.now();
+    }
+
+    public DomainResult startCompletion(String fundsReservationId) {
+        TransferState currentState = state;
+        return switch (currentState) {
+            case REQUESTED -> {
+                this.fundsReservationId = fundsReservationId;
+                state = TransferState.COMPLETION_PENDING;
+                yield success();
+            }
+
+            case COMPLETION_PENDING -> success();
+
+            case CANCEL_PENDING, CANCELLED ->
+                  transitionError(DomainErrorCode.COMPLETE_TOO_LATE, TransferState.COMPLETION_PENDING);
+
+            case COMPLETED, REJECTED, SUSPENDED ->
+                  transitionError(DomainErrorCode.UNEXPECTED_TRANSITION, TransferState.COMPLETION_PENDING);
+
+            default -> illegalStateError();
+        };
+    }
+
+    public DomainResult markCompleted() {
+        TransferState currentState = state;
+        return switch (currentState) {
+            case COMPLETION_PENDING -> {
+                state = TransferState.COMPLETED;
+                yield success();
+            }
+            case COMPLETED -> success();
+
+            case CANCELLED, CANCEL_PENDING ->
+                  transitionError(DomainErrorCode.COMPLETE_TOO_LATE, TransferState.COMPLETED);
+
+            case REQUESTED, REJECTED, SUSPENDED ->
+                  transitionError(DomainErrorCode.UNEXPECTED_TRANSITION, TransferState.COMPLETED);
+
+            default -> illegalStateError();
+        };
+    }
+
+    public DomainResult reject() {
+        TransferState currentState = state;
+        return switch(currentState) {
+            case COMPLETION_PENDING, REQUESTED -> {
+                state = TransferState.REJECTED;
+                yield success();
+            }
+
+            case REJECTED -> success();
+
+            case CANCEL_PENDING, CANCELLED -> transitionError(DomainErrorCode.REJECT_TOO_LATE, TransferState.REJECTED);
+
+            case COMPLETED, SUSPENDED -> transitionError(DomainErrorCode.UNEXPECTED_TRANSITION, TransferState.REJECTED);
+
+            default -> illegalStateError();
+        };
+    }
+
+    public DomainResult startCancellation() {
+        TransferState currentState = state;
+        return switch (currentState) {
+            case REQUESTED -> {
+                state = TransferState.CANCEL_PENDING;
+                yield success();
+            }
+
+            case CANCEL_PENDING -> success();
+
+            case REJECTED, COMPLETED, COMPLETION_PENDING, SUSPENDED ->
+                  transitionError(DomainErrorCode.CANCEL_TOO_LATE, TransferState.CANCEL_PENDING);
+
+            case CANCELLED ->
+                  transitionError(DomainErrorCode.UNEXPECTED_TRANSITION, TransferState.CANCEL_PENDING);
+
+            default -> illegalStateError();
+        };
+    }
+
+    public DomainResult markCancelled() {
+        TransferState currentState = state;
+        return switch (currentState) {
+            case CANCEL_PENDING -> {
+                state = TransferState.CANCELLED;
+                yield success();
+            }
+
+            case CANCELLED -> success();
+
+            case REQUESTED, REJECTED, COMPLETED, COMPLETION_PENDING, SUSPENDED ->
+                  transitionError(DomainErrorCode.UNEXPECTED_TRANSITION, TransferState.CANCELLED);
+
+            default -> illegalStateError();
+        };
+    }
+
+    public DomainResult suspend() {
+        if (List.of(TransferState.CANCELLED,
+              TransferState.REJECTED,
+              TransferState.COMPLETED).contains(state)) {
+            return illegalStateError();
+        }
+        state = TransferState.SUSPENDED;
+        return success();
+    }
+
+    private DomainResult transitionError(DomainErrorCode code, TransferState toState) {
+        return DomainResult.builder()
+              .transferId(id)
+              .error(new DomainError(code,
+                    String.format(TRANSITION_ERROR_TEMPLATE, id,
+                          state, toState)))
+              .build();
+    }
+
+    private DomainResult illegalStateError() {
+        return DomainResult.builder()
+              .transferId(id)
+              .error(new DomainError(DomainErrorCode.ILLEGAL_STATE, String
+                    .format(ILLEGAL_STATE_ERROR_TEMPLATE, id, state)))
+              .build();
+    }
+
+    private DomainResult success() {
+        return DomainResult.builder()
+              .transferId(id)
+              .build();
+    }
+
+}

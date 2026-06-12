@@ -1,8 +1,10 @@
 import { Routes } from '@angular/router';
 import { PricingLiveComponent } from './components/pricing-live/pricing-live';
+import { BankingComponent } from './components/banking/banking';
 
 export const routes: Routes = [
-  { path: 'live', component: PricingLiveComponent },
-  { path: '', redirectTo: '/live', pathMatch: 'full' },
-  { path: '**', redirectTo: '/live' }
+  { path: 'pricing', component: PricingLiveComponent },
+  { path: 'banking', component: BankingComponent },
+  { path: '', redirectTo: '/pricing', pathMatch: 'full' },
+  { path: '**', redirectTo: '/pricing' }
 ];

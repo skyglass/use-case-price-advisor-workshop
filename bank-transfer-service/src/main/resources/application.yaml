@@ -1,0 +1,91 @@
+app:
+  kafka:
+    topics:
+      transfer-execution-saga-replies-topic: transfer-execution-saga-replies
+      transfer-cancellation-saga-replies-topic: transfer-cancellation-saga-replies
+      accounts-service-commands-topic: accounts-service-commands
+      anti-fraud-service-commands-topic: anti-fraud-service-commands
+      transfer-incident-alerts-topic: transfer-incident-alerts
+server:
+  port: 8080
+
+spring:
+  application:
+    name: bank-transfer-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/transfers
+    username: transfers
+    password: transfers
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  sql:
+    init:
+      mode: never
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Host mode:
+          # issuer-uri: http://localhost:8180/realms/banking
+          #
+          # Docker-compose mode:
+          # issuer-uri: http://keycloak:8080/realms/banking
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/banking}
+
+security:
+  expected-audience: ${EXPECTED_AUDIENCE:transfer-service}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    org.flywaydb: INFO
+
+inbox:
+  cleanup:
+    retention: "P1D"
+    lock-at-most-for: "PT5M"
+    lock-at-least-for: "PT10S"
+
+outbox:
+  cleanup:
+    retention: "P1D"
+    lock-at-most-for: "PT5M"
+    lock-at-least-for: "PT10S"
+
+cron:
+  delete:
+    old:
+      inbox: "0 0 0/1 * * *"
+      outbox: "0 0 0/1 * * *"

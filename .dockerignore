@@ -1,0 +1,10 @@
+.git
+.idea
+**/.DS_Store
+**/target
+**/node_modules
+
+priceadvisor-ui
+pricing-model
+pricing-job/state
+pricing-job/working

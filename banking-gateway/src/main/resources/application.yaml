@@ -1,0 +1,95 @@
+server:
+  port: 8079
+
+spring:
+  application:
+    name: banking-gateway
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/banking}
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: transfer-service
+              uri: ${TRANSFER_SERVICE_URL:http://bank-transfer-service:8080}
+              predicates:
+                - Path=/api/transfer,/api/transfer/**
+              filters:
+                - RewritePath=/api/transfer(?<segment>/?.*), /banking/transfer$\{segment}
+
+            - id: banking-account-service
+              uri: ${ACCOUNT_SERVICE_URL:http://bank-account-service:8081}
+              predicates:
+                - Path=/api/banking/accounts,/api/banking/accounts/**
+              filters:
+                - RewritePath=/api/banking/accounts(?<segment>/?.*), /banking/accounts$\{segment}
+
+            - id: pricing-advisor-pricing-api
+              uri: ${PRICING_API_URL:http://pricing-api:8080}
+              predicates:
+                - Path=/api/pricing-advisor/pricing,/api/pricing-advisor/pricing/**
+              filters:
+                - RewritePath=/api/pricing-advisor/pricing(?<segment>/?.*), /pricing-api$\{segment}
+
+            - id: pricing-advisor-competitor-api
+              uri: ${PRICING_API_URL:http://pricing-api:8080}
+              predicates:
+                - Path=/api/pricing-advisor/competitor,/api/pricing-advisor/competitor/**
+              filters:
+                - RewritePath=/api/pricing-advisor/competitor(?<segment>/?.*), /competitor-api/competitor-prices$\{segment}
+
+            - id: pricing-advisor-websocket
+              uri: ${PRICING_WS_URL:ws://pricing-api:8080}
+              predicates:
+                - Path=/api/pricing-advisor/ws,/api/pricing-advisor/ws/**
+                - Header=Upgrade, websocket
+              filters:
+                - RewritePath=/api/pricing-advisor/ws(?<segment>/?.*), /ws$\{segment}
+
+            - id: pricing-advisor-sockjs
+              uri: ${PRICING_API_URL:http://pricing-api:8080}
+              predicates:
+                - Path=/api/pricing-advisor/ws,/api/pricing-advisor/ws/**
+              filters:
+                - RewritePath=/api/pricing-advisor/ws(?<segment>/?.*), /ws$\{segment}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+security:
+  expected-audience: ${EXPECTED_USER_AUDIENCE:price-advisor-ui}
+
+keycloak:
+  token-uri: ${KEYCLOAK_TOKEN_URI:http://keycloak:8080/realms/banking/protocol/openid-connect/token}
+  exchange:
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://keycloak:8080/realms/banking/protocol/openid-connect/token}
+    client-id: ${KEYCLOAK_EXCHANGE_CLIENT_ID:banking-gateway}
+    client-secret: ${KEYCLOAK_EXCHANGE_CLIENT_SECRET:gateway-secret}
+    audience: ${KEYCLOAK_EXCHANGE_AUDIENCE:transfer-service}
+    scope: ${KEYCLOAK_EXCHANGE_SCOPE:}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    urls-primary-name: pricing advisor
+    persist-authorization: true
+    oauth:
+      client-id: price-advisor-ui
+    urls:
+      - name: pricing advisor
+        url: /v3/api-docs/pricing-advisor
+      - name: banking
+        url: /v3/api-docs/banking
+      - name: transfer
+        url: /v3/api-docs/transfer

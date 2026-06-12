@@ -1,17 +1,25 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
+import { AuthPanel } from './components/auth-panel/auth-panel';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, MatSlideToggleModule, MatTableModule, MatCardModule],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    MatSlideToggleModule,
+    MatTableModule,
+    MatCardModule,
+    AuthPanel
+  ],
   templateUrl: './app.html',
   styleUrls: ['./app.css']
 })
 export class App {
-  protected title = 'priceadvisor-ui';
   isDarkMode = false;
 
   toggleTheme() {

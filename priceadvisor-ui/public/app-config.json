@@ -1,6 +1,10 @@
 {
-  "apiBaseUrl": "http://localhost:8080",
-  "pricingApiPath": "/pricing-api",
-  "competitorApiPath": "/competitor-api",
-  "wsPath": "/ws"
+  "apiBaseUrl": "http://localhost:8079",
+  "authTokenPath": "/auth/token",
+  "pricingApiPath": "/api/pricing-advisor/pricing",
+  "pricingEventsPath": "/api/pricing-advisor/pricing/events",
+  "competitorApiPath": "/api/pricing-advisor/competitor",
+  "accountApiPath": "/api/banking/accounts",
+  "transferApiPath": "/api/transfer",
+  "wsPath": "/api/pricing-advisor/ws"
 }
